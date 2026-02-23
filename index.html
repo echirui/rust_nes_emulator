@@ -236,6 +236,41 @@
             border: 1px solid #f8aab1;
         }
 
+        /* Navigation buttons */
+        .nav-buttons {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #e1e4e8;
+        }
+
+        .nav-button {
+            padding: 10px 20px;
+            background: #f6f8fa;
+            border: 1px solid #e1e4e8;
+            border-radius: 6px;
+            color: #0366d6;
+            text-decoration: none;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            flex: 1;
+            text-align: center;
+            margin: 0 10px;
+        }
+
+        .nav-button:hover {
+            background: #eaecef;
+        }
+
+        .nav-button.disabled {
+            color: #959da5;
+            pointer-events: none;
+            background: #fafbfc;
+            opacity: 0.6;
+        }
+
         /* Mobile responsiveness - Accordion style */
         @media screen and (max-width: 768px) {
             body {
@@ -290,10 +325,17 @@
 
     <div id="content-wrapper">
         <div id="content">
-            <div style="text-align: center; margin-top: 100px; color: #586069;">
-                <h2>左側のメニューからセクションを選択してください</h2>
-                <p>※注意: ローカルファイルからアクセスしている場合、ブラウザのセキュリティ制限(CORS)によりファイルが読み込めないことがあります。<br>その場合は
-                    <code>python3 -m http.server</code> などのローカルサーバー経由で開いてください。</p>
+            <div id="markdown-container">
+                <div style="text-align: center; margin-top: 100px; color: #586069;">
+                    <h2>左側のメニューからセクションを選択してください</h2>
+                    <p>※注意: ローカルファイルからアクセスしている場合、ブラウザのセキュリティ制限(CORS)によりファイルが読み込めないことがあります。<br>その場合は
+                        <code>python3 -m http.server</code> などのローカルサーバー経由で開いてください。
+                    </p>
+                </div>
+            </div>
+            <div id="bottom-nav" class="nav-buttons" style="display: none;">
+                <a id="prev-btn" class="nav-button">← 前へ</a>
+                <a id="next-btn" class="nav-button">次へ →</a>
             </div>
         </div>
     </div>
@@ -410,6 +452,14 @@
             }
         ];
 
+        // Flatten TOC for navigation
+        const flatFiles = [];
+        TOC.forEach(chapter => {
+            chapter.files.forEach(file => {
+                flatFiles.push(file);
+            });
+        });
+
         // 1. Render Sidebar
         const navContainer = document.getElementById('nav-container');
         TOC.forEach(chapter => {
@@ -442,7 +492,12 @@
         async function loadMarkdown(fileId, linkElement) {
             // Update active state in sidebar
             document.querySelectorAll('.file-list a').forEach(a => a.classList.remove('active'));
-            if (linkElement) linkElement.classList.add('active');
+            if (linkElement) {
+                linkElement.classList.add('active');
+            } else {
+                const activeLink = document.querySelector(`a[data-id="${fileId}"]`);
+                if (activeLink) activeLink.classList.add('active');
+            }
 
             // Close mobile menu accordion
             const sidebar = document.getElementById('sidebar');
@@ -450,8 +505,10 @@
                 sidebar.classList.remove('open');
             }
 
-            const contentDiv = document.getElementById('content');
-            contentDiv.innerHTML = '<div class="loading">ファイルを読み込み中...</div>';
+            const mdContainer = document.getElementById('markdown-container');
+            const bottomNav = document.getElementById('bottom-nav');
+            mdContainer.innerHTML = '<div class="loading">ファイルを読み込み中...</div>';
+            bottomNav.style.display = 'none';
 
             try {
                 // Fetch the Markdown file
@@ -462,20 +519,53 @@
                 const markdownText = await response.text();
 
                 // Parse and render
-                contentDiv.innerHTML = marked.parse(markdownText);
+                mdContainer.innerHTML = marked.parse(markdownText);
+
+                // Update navigation buttons
+                updateBottomNav(fileId);
+                bottomNav.style.display = 'flex';
 
                 // Scroll to top
                 document.getElementById('content-wrapper').scrollTop = 0;
             } catch (error) {
-                contentDiv.innerHTML = `
+                mdContainer.innerHTML = `
                     <div class="error">
                         <h3>読み込みエラー</h3>
                         <p>ファイル <code>${fileId}.md</code> の読み込みに失敗しました。</p>
                         <p>理由: ${error.message}</p>
                         <p><strong>CORSエラーの場合:</strong> ローカルファイル (file://) から直接開いていると、セキュリティポリシーにより他のファイルを読み込めません。<br>
-                        ターミナルで <code>python3 -m http.server</code> を実行し、<code>http://localhost:8000/guide.html</code> にアクセスしてください。</p>
+                        ターミナルで <code>python3 -m http.server</code> を実行し、<code>http://localhost:8000/index.html</code> にアクセスしてください。</p>
                     </div>
                 `;
+            }
+        }
+
+        // Navigation update function
+        function updateBottomNav(currentId) {
+            const currentIndex = flatFiles.findIndex(f => f.id === currentId);
+            const prevBtn = document.getElementById('prev-btn');
+            const nextBtn = document.getElementById('next-btn');
+
+            if (currentIndex > 0) {
+                const prevFile = flatFiles[currentIndex - 1];
+                prevBtn.classList.remove('disabled');
+                prevBtn.onclick = () => loadMarkdown(prevFile.id);
+                prevBtn.innerHTML = `&larr; 前ページ<br><span style="font-size: 0.8em; font-weight: normal; color: #586069;">${prevFile.name}</span>`;
+            } else {
+                prevBtn.classList.add('disabled');
+                prevBtn.onclick = null;
+                prevBtn.innerHTML = `&larr; 前ページ`;
+            }
+
+            if (currentIndex < flatFiles.length - 1) {
+                const nextFile = flatFiles[currentIndex + 1];
+                nextBtn.classList.remove('disabled');
+                nextBtn.onclick = () => loadMarkdown(nextFile.id);
+                nextBtn.innerHTML = `次ページ &rarr;<br><span style="font-size: 0.8em; font-weight: normal; color: #586069;">${nextFile.name}</span>`;
+            } else {
+                nextBtn.classList.add('disabled');
+                nextBtn.onclick = null;
+                nextBtn.innerHTML = `次ページ &rarr;`;
             }
         }
 
